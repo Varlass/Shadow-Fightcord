@@ -10,10 +10,13 @@ load_dotenv()
 from utils.check import check_list
 from data.app.manager import db_manage, Init
 
+from cogs.data_manager.data_manager import DataManager
+
 
 class MyBot(Bot):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.data = DataManager()
 
     async def on_ready(self):
         for guild in self.guilds:
@@ -74,6 +77,7 @@ bot = MyBot(command_prefix = prefix, intents = intents, help_command = None, cas
 if __name__ == "__main__":
     try:
         Init().init_files()
+        bot.data.start()
         bot.run(TOKEN)
 
     finally:
