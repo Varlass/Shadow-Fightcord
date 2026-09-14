@@ -1,8 +1,8 @@
 from discord import Interaction
-from discord.ext.commands import Context, CheckFailure, check
+from discord.ext.commands import Context, CheckFailure, check as ch
 from yaml import safe_load
 
-from data.app.manager import DIR
+from data.manager import DIR
 from utils.unifer import Unifer
 
 
@@ -13,22 +13,22 @@ try:
     white_list = {check_list[category][name] for category, names in check_list["White_List"].items() for name in names if name}
 
 except KeyError:
-    white_list = {}
+    white_list = set()
 
 
 def check(checks: set[int] = set(), *, bypass: bool = True): # Декоратор проверки id.
     if not isinstance(checks, set):
         raise TypeError("Цель проверки должна быть множеством.")
-    
+
     effective_checks = checks|white_list if bypass else checks
 
     async def predicate(source: Context|Interaction) -> bool:
         context = Unifer(source)
 
-        ids = {context.user_id,
-               *context.roles_id,
-               context.channel_id,
-               context.guild_id}
+        ids = {context.user.id,
+               *{role.id for role in context.user.roles},
+               context.channel.id,
+               context.guild.id}
         
         ids.discard(None)
 
@@ -37,4 +37,4 @@ def check(checks: set[int] = set(), *, bypass: bool = True): # Декорато�
 
         raise CheckFailure()
 
-    return check(predicate)
+    return ch(predicate)
