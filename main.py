@@ -8,9 +8,9 @@ from os import getenv
 load_dotenv()
 
 from utils.check import check_list
-from data.app.manager import db_manage, Init
+from data.manager import default_data
 
-from cogs.data_manager.data_manager import DataManager
+from cods.data_manager import DataManager
 
 
 class MyBot(Bot):
@@ -46,7 +46,7 @@ class MyBot(Bot):
     async def setup_hook(self):
         root = Path(__file__).resolve().parent
 
-        for file in (root / "cogs").rglob("*.py"):
+        for file in (root / "cods/commands").rglob("*.py"):
             if file.name.startswith("_"):
                 continue
 
@@ -76,9 +76,9 @@ bot = MyBot(command_prefix = prefix, intents = intents, help_command = None, cas
 
 if __name__ == "__main__":
     try:
-        Init().init_files()
+        default_data.init_files()
         bot.data.start()
         bot.run(TOKEN)
 
     finally:
-        db_manage.close_all()
+        bot.data.end()
