@@ -2,7 +2,7 @@ from discord.ext import commands
 from discord import Interaction, app_commands
 from discord.ext.commands import Cog, Bot, Context
 
-from cogs.window_create.window_manager import window_create
+from cods.window_manager.window_create import window_create
 
 
 class NameCog(Cog):

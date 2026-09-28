@@ -1,22 +1,23 @@
 from discord import Interaction
 from discord.ext.commands import Context, CheckFailure, check as ch
-from yaml import safe_load
 
-from data.manager import DIR
+from data.manager import FileManage
 from utils.unifer import Unifer
 
 
-with open(DIR/"id_list.yaml", encoding = "utf-8") as file:  # Список id из white_list.yaml.
-    check_list = safe_load(file)
+check_list: dict[str, int|dict[str, list[str]]] = FileManage("id_list.yaml").read()
 
 try:
     white_list = {check_list[category][name] for category, names in check_list["White_List"].items() for name in names if name}
 
-except KeyError:
+except (TypeError, KeyError):
     white_list = set()
 
 
-def check(checks: set[int] = set(), *, bypass: bool = True): # Декоратор проверки id.
+def check(checks: set[int]|int = set(), *, bypass: bool = True): # Декоратор проверки id.
+    if isinstance(checks, int):
+        checks = {checks}
+
     if not isinstance(checks, set):
         raise TypeError("Цель проверки должна быть множеством.")
 

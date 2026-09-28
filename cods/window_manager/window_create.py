@@ -1,5 +1,3 @@
-import discord
-from discord.ext import commands
 from discord import Interaction
 from discord.ext.commands import Context
 
@@ -7,7 +5,7 @@ from utils.unifer import Unifer
 from utils import render_tools as render
 from utils.library import colors
 
-from cogs.window_create.buttons_func import VIEW_MAP
+from .buttons_func import VIEW_MAP
 
 
 async def window_create(self, context: Context|Interaction, window: str):

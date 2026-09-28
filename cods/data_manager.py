@@ -1,6 +1,8 @@
-from data.manager import DIR, json_manage
-from utils.data_tools import text_to_collection, collection_to_object
+from data.manager import FileManage
 from utils.utils import ntime
+from utils.data_tools import text_to_collection, object_to_collection
+
+from cods.game.obj.general import Player, Helmet, Armor, Melee, Range
 
 
 FILES = {"WINDOWS": "windows.txt",
@@ -10,33 +12,37 @@ CACHE_TIME = 3600
 
 class DataManager:
     def __init__(self):
-        self.players: list[object] = []
-        self.windows: dict = {}
-        self.items: dict[object] = {}
+        self.players: dict[int, Player] = {}
+        self.windows: dict[str, dict] = {}
+        self.items: dict[str, Helmet|Armor|Melee|Range] = {}
 
-    def init_data(self):
-        with open(DIR/FILES["windows"], "r", encoding = "utf-8") as file:
-            self.windows = text_to_collection(file.read(), {})
+    def start(self):
+        self.load_windows(FILES["WINDOWS"])
+        self.load_items(FILES["ITEMS"])
 
-        with open(DIR/FILES["items"], "r", encoding = "utf-8") as file:
-            self.items = collection_to_object(text_to_collection)
+    def update(self):
+        ...
 
-    def get_user(self, id: int):
-        for player in self.players:
-            if player.id == id:
-                return player
+    def end(self):
+        ...
 
-        json_dict = json_manage.read("users")
-        for player in json_dict:
-            if player["id"] == id:
-                player["time"] = ntime().timestamp()
-                object_player = collection_to_object(player)
+    def load_windows(self, file: str):
+        ...
 
-                self.players.append(object_player)
-                return object_player
+    def load_items(self, file: str):
+        ...
 
-        return None
+    def create_player(self):
+        ...
+
+    def get_player(self):
+        ...
+
+    def save_player(self):
+        ...
+
+    def delete_player(self):
+        ...
 
     def cache_manager(self):
-        current_time = ntime().timestamp()
-        self.players[:] = [player for player in self.players if player.time + CACHE_TIME >= current_time]
+        ...

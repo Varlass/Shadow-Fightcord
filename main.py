@@ -5,10 +5,10 @@ from pathlib import Path
 from importlib import import_module
 from dotenv import load_dotenv
 from os import getenv
-load_dotenv()
 
-from utils.check import check_list
 from data.manager import default_data
+default_data.init_files()
+from utils.check import check_list
 
 from cods.data_manager import DataManager
 
@@ -62,9 +62,10 @@ class MyBot(Bot):
                 print(traceback.format_exc())
 
 
+load_dotenv()
 TOKEN = getenv("TOKEN")
 
-prefix = when_mentioned_or("n!", "N!")
+prefix = when_mentioned_or("c!", "C!")
 
 intents = Intents().default()
 intents.members = True
@@ -76,7 +77,6 @@ bot = MyBot(command_prefix = prefix, intents = intents, help_command = None, cas
 
 if __name__ == "__main__":
     try:
-        default_data.init_files()
         bot.data.start()
         bot.run(TOKEN)
 

@@ -1,5 +1,5 @@
-import json, sqlite3
-import copy
+import json, yaml, sqlite3
+from typing import Callable, Any, TextIO
 from shutil import copy2
 from pathlib import Path
 
@@ -26,50 +26,104 @@ class DefaultData: # Создание файлов при их отсутств�
             copy2(source, destination)
 
 
-class JsonManage: # Работа с .json
-    def temp(self, file_name: str, temp: dict, *, root_keys: list|None = None, dir: Path = DIR) -> dict: # Высокоуровневая функция создания шаблона в json.
-        data = self.read(file_name, dir = dir)
-        
-        target = data
-        if root_keys:
-            for key in root_keys:
-                target = target.setdefault(key, {})
-        
-        self._apply_template(target, temp)
-        self.json_write(file_name, data)
-
-        return data
-
-    def _apply_template(self, target: dict, temp: dict) -> dict: # Низкоуровневая функция создания шаблона в json.
-        for key, value in temp.items():
-            if key not in target:
-                target[key] = copy.deepcopy(value)
-
-            elif isinstance(value, dict) and isinstance(target[key], dict):
-                self._apply_template(target[key], value)
-
-        return target
-
-    def read(self, file_name: str, *, dir: Path = DIR) -> dict: # Чтение с json.
-        path = dir/f"{file_name}.json"
+class FileManage:
+    def __init__(self, file_path: Path|str):
+        self.file: Path = self._get_path(file_path)
+        self.handlers: dict[str, Callable] = self._get_format(self.file)
 
 
-        with open(path, "r", encoding = "utf-8") as file:
-            return json.load(file)
+    def update(self, data: Any) -> None:
+        self.handlers["update"](self, data, self.file)
 
-    def write(self, file_name: str, data: dict, *, dir: Path = DIR) -> None: # Запись в json.
-        path = dir/f"{file_name}.json"
+    def read(self) -> Any:
+        with open(self.file, mode =  "r", encoding = "utf-8") as file:
+            return self.handlers["read"](file)
+            
 
-        with open(path, "w", encoding = "utf-8") as file:
-            json.dump(data, file, indent = 4, ensure_ascii = False)
+    def write(self, data: Any) -> None:
+        with open(self.file, mode = "w", encoding = "utf-8") as file:
+            self.handlers["write"](data, file)
+
+
+    @staticmethod
+    def _update_txt(self: "FileManage", data: Any, file: Path) -> None:
+        with open(file, mode = "a", encoding = "utf-8") as f:
+            self._write_txt(data, f)
+
+    @staticmethod
+    def _update_json(self: "FileManage", data: dict, _: Path) -> None:
+        old_data = self.read() or {}
+        new_data = {**old_data, **data}
+        self.write(new_data)
+
+    @staticmethod
+    def _update_yaml(self: "FileManage", data: dict, _: Path) -> None:
+        old_data = self.read() or {}
+        new_data = {**old_data, **data}
+        self.write(new_data)
+
+    @staticmethod
+    def _read_txt(file: TextIO) -> str:
+        return file.read()
+
+    @staticmethod
+    def _read_json(file: TextIO) -> dict|None:
+        return json.load(file)
+
+    @staticmethod
+    def _read_yaml(file: TextIO) -> dict|None:
+        return yaml.safe_load(file)
+
+    @staticmethod
+    def _write_txt(data: Any, file: TextIO) -> None:
+        file.write(str(data))
+
+    @staticmethod
+    def _write_json(data: dict, file: TextIO) -> None:
+        json.dump(data, file, ensure_ascii = False, intent = 4)
+
+    @staticmethod
+    def _write_yaml(data, file: TextIO) -> None:
+        yaml.safe_dump(data, file, allow_unicode = True, sort_keys = False)
+
+
+    @staticmethod
+    def _get_path(file_path: Path|str) -> Path:
+        if isinstance(file_path, Path):
+            return file_path
+
+        if isinstance(file_path, str):
+            return DIR/file_path
+
+        else:
+            raise TypeError(f"argument 'file_path' must be a Path or str, got {type(file_path).__name__}")
+
+    def _get_format(self, file_path: Path) -> dict[str, Callable]:
+        file_format = file_path.suffix.lower()
+
+        if file_format in self.FORMATS:
+            return self.FORMATS[file_format]
+
+        else:
+            raise ValueError(f"Unsupported file format: {file_format}")
+
+    FORMATS: dict[str, dict[str, Callable]] = {".txt": {"read": _read_txt,
+                                                       "write": _write_txt,
+                                                       "update": _update_txt},
+                                              ".json": {"read": _read_json,
+                                                        "write": _write_json,
+                                                        "update": _update_json},
+                                              ".yaml": {"read": _read_yaml,
+                                                        "write": _write_yaml,
+                                                        "update": _update_yaml}}
 
 
 class DataBaseManage: # Работа с db.
-    TYPE_MAP = {str: "TEXT",
-                int: "INTEGER",
-                float: "REAL",
-                bool: "INTEGER",
-                bytes: "BLOB"}
+    TYPE_MAP: dict[type, str] = {str: "TEXT",
+                                 int: "INTEGER",
+                                 float: "REAL",
+                                 bool: "INTEGER",
+                                 bytes: "BLOB"}
 
     def __init__(self):
         self.connections = {}
@@ -128,5 +182,4 @@ class DataBaseManage: # Работа с db.
 
 
 default_data = DefaultData()
-json_manage = JsonManage()
 db_manage = DataBaseManage()
