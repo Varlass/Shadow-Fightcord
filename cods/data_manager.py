@@ -1,13 +1,15 @@
-from data.manager import FileManage
+from data.manager import FileManager
 from utils.utils import ntime
 from utils.data_tools import text_to_collection, object_to_collection
 
-from cods.game.obj.general import Player, Helmet, Armor, Melee, Range
+from cods.game.objects.general import Player, Helmet, Armor, Melee, Range
 
 
-FILES = {"WINDOWS": "windows.txt",
-         "ITEMS": "items.txt",
-         "USERS": "users.json"}
+FILES = {"WINDOWS_TEXT": "windows.txt",
+         "ITEMS_TEXT": "items.txt",
+         "WINDOWS_DATA": "windows.txt",
+         "ITEMS_DATA": "items.txt",
+         "PLAYERS": "players.json"}
 CACHE_TIME = 3600
 
 class DataManager:
@@ -17,26 +19,41 @@ class DataManager:
         self.items: dict[str, Helmet|Armor|Melee|Range] = {}
 
     def start(self):
-        self.load_windows(FILES["WINDOWS"])
-        self.load_items(FILES["ITEMS"])
+        self.load_windows(FILES["WINDOWS_DATA"])
+        self.load_items(FILES["ITEMS_DATA"])
 
     def update(self):
-        ...
+        self.load_windows(FILES["WINDOWS_TEXT"])
+        self.load_items(FILES["ITEMS_TEXT"])
 
     def end(self):
-        ...
+        data = {}
+        for player_id, player in self.players.items:
+            data[str(player_id)] = object_to_collection(player)
+
+        FileManager(FILES["PLAYERS"]).update(data)
 
     def load_windows(self, file: str):
-        ...
+        self.windows = text_to_collection(FileManager(file).read(), {})
 
     def load_items(self, file: str):
-        ...
+        self.items = text_to_collection(FileManager(file).read(), {})
 
-    def create_player(self):
-        ...
+    def create_player(self, player_id: int) -> Player:
+        self.players[player_id] = Player()
+        return self.players[player_id]
 
-    def get_player(self):
-        ...
+    def get_player(self, player_id: int) -> Player|None:
+        if player_id in self.players:
+            return self.players[player_id]
+
+        data: dict[str, dict] = FileManager(FILES["PLAYERS"]).read()
+
+        if str(player_id) in data:
+            self.players[player_id] = data[str(player_id)]
+            return self.players[player_id]
+
+        return None
 
     def save_player(self):
         ...
