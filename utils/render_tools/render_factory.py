@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field, fields, is_dataclass
 from typing import Any, Callable
 from discord import Interaction, File, ButtonStyle, Embed as E, ChannelType
-from discord.ui import View as V, Button as B, Modal as M, ChannelSelect, TextInput
+from discord.ui import View as V, Button as B, Modal as M, Select as S, ChannelSelect, TextInput
 
 
 @dataclass
@@ -45,8 +45,8 @@ class Button:
 class Select:
     callback: Callable
     select_type: Any
-    placeholder: str|None = None
-    custom_id: str|None = None
+    placeholder: str = "Select"
+    custom_id: str = "MISSING"
     row: int|None = None
 
 @dataclass
@@ -157,16 +157,27 @@ class _ButtonFactory(B):
 
 class _ChannelSelectFactory(ChannelSelect):
     def __init__(self, select: Select, data: Any):
-        ChannelSelect.__init__(self, custom_id = select.custom_id, channel_types = select.select_type[1], placeholder = select.placeholder, row = select.row)
+        super().__init__(custom_id = select.custom_id, channel_types = select.select_type[1], placeholder = select.placeholder, row = select.row)
         self.select = select
         self.data = data
 
     async def callback(self, interaction: Interaction):
         await self.select.callback(self, interaction)
 
+class _SelectFactory(S):
+    def __init__(self, select: Select, data: Any):
+        super().__init__(custom_id = select.custom_id, placeholder = select.placeholder, options = select.select_type[1], row = select.row)
+        self.select = select
+        self.data = data
+
+    async def callback(self, interaction: Interaction):
+        await self.select.callback(self, interaction)
+
+
 class SelectType:
     channel = (_ChannelSelectFactory, None)
     text_channel = (_ChannelSelectFactory, [ChannelType.text])
+    option = lambda options: (_SelectFactory, options)
 
 
 class Modal(M): # доработать идею

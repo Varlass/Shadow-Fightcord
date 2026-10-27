@@ -1,10 +1,13 @@
 SYNTAX = {
-"types": {"=": dict,
-          "-": list,
-          "~": set,
-          "_": tuple},
-"commentary": "#",
-"separator": ":"
+    "types": {
+        "=": dict,
+        "-": list,
+        "~": set,
+        "%": tuple
+    },
+    "commentary": "#",
+    "separator": ":",
+    "escape": ""
 }
 
 DEFAULT_NAME: str = "Object"

@@ -1,9 +1,27 @@
+from __future__ import annotations
 from collections.abc import Iterable, Callable
 
-from .conversion_internal import (Object, Collection, checking,
+from .conversion_internal import (COLLECTIONS, Collection,
+                                  EmptyKeyWarning, EmptyValueWarning, MissingSeparatorError,
+                                  Object,
+                                  checking,
                                   text_tokeniser, tokeniser,
                                   text_builder, collection_builder, object_builder)
 from .config import DEFAULT_NAME
+
+
+__all__ = [
+    "text_to_collection", "text_to_object",
+    "collection_to_text", "collection_to_object",
+    "object_to_text", "object_to_collection",
+    "Object",
+    "EmptyKeyWarning", "EmptyValueWarning", "MissingSeparatorError"
+]
+
+
+def _check_type(argument_name: str, argument: object, need_types: tuple) -> None:
+    if not isinstance(argument, need_types):
+        raise TypeError(f"argument {argument_name} must be a {', '.join(need_types.__name__)}, got {type(argument).__name__}")
 
 
 def text_to_collection(text: str, collection: Collection) -> Collection:
@@ -14,20 +32,17 @@ def text_to_collection(text: str, collection: Collection) -> Collection:
     collection has the type specefied by the collection argument.
     """
 
-    if not isinstance(text, str):
-        raise TypeError(f"argument 'text' must be a str, got {type(text).__name__}")
+    _check_type("text", text, (str))
+    _check_type("collection", collection, COLLECTIONS)
 
-    if not isinstance(collection, Collection):
-        raise TypeError(f"argument 'collection' must be a dict, list or set, got {type(collection).__name__}") 
-
-    tokens = text_tokeniser(text)
+    tokens = text_tokeniser(text, collection)
     checking(tokens)
     result = collection_builder(tokens, collection)
 
     return result
 
 
-def text_to_object(text: str, functions: Iterable[Callable]|None = None, class_name: str = DEFAULT_NAME) -> Object:
+def text_to_object(text: str, root_type: Collection, functions: Iterable[Callable]|Callable|None = None, class_name: str = DEFAULT_NAME) -> Object:
     """
     Parse formatted text into an Object.
 
@@ -35,11 +50,11 @@ def text_to_object(text: str, functions: Iterable[Callable]|None = None, class_n
     object reflects the structure and murkup of the input.
     """
 
-    if functions is not None:
-        functions = list(functions)
-
     if not isinstance(text, str):
         raise TypeError(f"argument 'text' must be a str, got {type(text).__name__}")
+
+    if not isinstance(root_type, Collection):
+        raise TypeError(f"argument 'root_type' must be a dict, list, tuple or set, got {type(root_type).__name__}")
 
     if functions is not None and not all(callable(function) for function in functions):
         raise TypeError(f"argument 'functions' must contain only callable objects, got {type(functions).__name__}")
@@ -47,7 +62,10 @@ def text_to_object(text: str, functions: Iterable[Callable]|None = None, class_n
     if not isinstance(class_name, str):
         raise TypeError(f"argument 'class_name' must be a str, got {type(class_name).__name__}")
 
-    tokens = text_tokeniser(text)
+    if not isinstance(root_type, type):
+        root_type = type(root_type)
+
+    tokens = text_tokeniser(text, root_type)
     checking(tokens)
     result = object_builder(tokens, functions, class_name)
 
@@ -125,6 +143,9 @@ def object_to_collection(obj: object, collection: Collection|None = None) -> Col
     input object. If no collection is specified, a dictionary is used.
     """
 
+    if isinstance(collection, type):
+        collection = collection()
+
     if collection is None:
         collection = {}
 
@@ -132,7 +153,7 @@ def object_to_collection(obj: object, collection: Collection|None = None) -> Col
         raise TypeError(f"argument 'obj' must be an object, got {type(obj).__name__}")
 
     if not isinstance(collection, Collection):
-        raise TypeError(f"argument 'collection' must be a dict, list, tuple or set, got {type(collection).__name__}")
+        raise TypeError(f"argument 'collection' must be a dict, list, tuple, set or None, got {type(collection).__name__}")
 
     tokens = tokeniser(obj, "object")
     checking(tokens)

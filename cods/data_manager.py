@@ -55,8 +55,14 @@ class DataManager:
 
         return None
 
-    def save_player(self):
-        ...
+    def save_player(self, player_id: int) -> None:
+        try:
+            player_data: dict = object_to_collection(self.players[player_id])
+
+            FileManager(FILES["PLAYERS"]).write(player_data)
+
+        except KeyError:
+            raise KeyError("save func used for non existent player")
 
     def delete_player(self):
         ...

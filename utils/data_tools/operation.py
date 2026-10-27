@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -11,20 +12,20 @@ class Node:
 MISSING = object()
 
 
-def fetch(container: list|dict, *, target_path: str|object = MISSING , target_value: str|object = MISSING) -> list[Node]: # Поиск узла.
+def fetch(collection: list|dict, *, target_path: Any = MISSING , target_value: Any = MISSING) -> list[Node]: # Поиск узла.
     result = []
 
     if target_path is not MISSING:
         target_path = tuple(target_path.split("."))
 
-    for node in _walk(container):
+    for node in _walk(collection):
         if (target_path is not MISSING and target_path == node.path[-len(target_path):]) or (target_value is not MISSING and target_value == node.value):
             result.append(node)
 
     return result
 
-def edit(container: list|dict, change, *, target_path: str|object = MISSING , target_value: str|object = MISSING): # Изменение значения узла.
-    for node in fetch(container, target_path = target_path, target_value = target_value):
+def edit(collection: list|dict, change: Any, *, target_path: Any = MISSING , target_value: Any = MISSING): # Изменение значения узла.
+    for node in fetch(collection, target_path = target_path, target_value = target_value):
         value = change(node.value) if callable(change) else change
         node.parent[node.key] = value
 

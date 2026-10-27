@@ -76,6 +76,7 @@ class YamlFormat:
 
 class FileManager:
     FORMATS: dict[str, type[Format]] = {".txt": TxtFormat,
+                                        ".log": TxtFormat,
                                         ".json": JsonFormat,
                                         ".yaml": YamlFormat}
 

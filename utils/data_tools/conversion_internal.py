@@ -1,6 +1,7 @@
+from __future__ import annotations
 from functools import wraps
 from warnings import warn
-from collections.abc import Callable
+from collections.abc import Iterable, Callable
 from types import MethodType
 from typing import Any
 from dataclasses import dataclass
@@ -9,44 +10,13 @@ from .config import SYNTAX, DEFAULT_NAME, CHECKING_KEY, CHECKING_VALUE
 
 
 Collection = dict|list|tuple|set
-
-class Object:
-    def __init__(self, items = None):
-        self._items = items
-
-    def __getitem__(self, key):
-        if self._items is None:
-            raise TypeError(f"'{type(self).__name__}' does not support indexing")
-
-        return self._items[key]
-
-    def __getattr__(self, attribute):
-        if self._items is not None:
-            return getattr(self._items, attribute)
-
-        raise AttributeError(f"{type(self).__name__} object has no attribute {attribute}")
-
-    def _add(self, function: Callable) -> None:
-        """Adds a function to the object."""
-
-        if not callable(function):
-            raise TypeError(f"'_add' expects a callable, got {type(function).__name__}")
-
-        setattr(self, function.__name__, MethodType(function, self))
-
-class_cache: dict[str, object] = {}
+Value = str|int|float|bool
+COLLECTIONS = (dict, list, tuple, set)
+VALUES = (str, int, float, bool)
 
 
-@dataclass(slots = True, eq = False)
-class Token:
-    parent: "Token"|None = None
-    key: Any = None
-    value: Any = None
-
-    high: int|None = None
-
-    path: str = ""
-
+class MissingSeparatorError(UserWarning):
+    pass
 
 class EmptyKeyWarning(UserWarning):
     pass
@@ -55,17 +25,67 @@ class EmptyValueWarning(UserWarning):
     pass
 
 
+class Object:
+    def __init__(self, items = None) -> Any:
+        self._items = items
+
+    def __getitem__(self, key):
+        if self._items is None:
+            raise TypeError(f"'{type(self).__name__}' does not support indexing")
+
+        return self._items[key]
+
+    def __getattr__(self, attribute) -> Any:
+        if self._items is None:
+            raise AttributeError(f"{type(self).__name__} object has no attribute {attribute}")
+
+        return getattr(self._items, attribute)
+
+    def _add(self, function: Callable|Iterable[Callable]) -> None:
+        """Adds a function to the object."""
+
+        if isinstance(function, (list, tuple, set)):
+            for func in function:
+                setattr(self, function.__name__, MethodType(func, self))
+
+        elif isinstance(function, dict):
+            for name, func in function:
+                setattr(self, name, MethodType(func, self))
+
+        elif callable(function):
+            setattr(self, function.__name__, MethodType(function, self))
+
+        else:
+            raise TypeError(f"'_add' expects a callable, got {type(function).__name__}")
+
+class_cache: dict[str, object] = {}
+
+
+@dataclass(slots = True, eq = False)
+class Token:
+    parent: Token|type = None
+
+    key: Any = None
+    value: Any = None
+
+    high: int|None = None
+
+    path: str = ""
+
+
 def normaliser(function):
-    """Normalises input text into a sequence of ligical lines."""
+    """Normalises input text into a sequence of logical lines."""
 
     @wraps(function)
-    def wrapper(text: str) -> list[tuple[str, int]]:
-        lines = text.splitlines()
-        result = []
-        current_line = None
-        current_number = 0
+    def wrapper(text: str, root_type: type[Collection]) -> list[tuple[str, str]]:
+        lines: list[str] = text.splitlines()
 
-        for number, raw_line in enumerate(lines):
+        result: list[tuple[str, str]] = []
+
+        current_line: str|None = None
+        current_number: int = 0
+
+        for number, raw_line in enumerate(lines, 1):
             line = raw_line.strip()
 
             if not line or line.startswith(SYNTAX["commentary"]):
@@ -76,18 +96,18 @@ def normaliser(function):
                     result.append((current_line, "line " + str(current_number)))
 
                 current_line = line
-                current_number = number + 1
+                current_number = number
 
             else:
                 if current_line is None:
-                    raise KeyError(f"The key is missing from the string.\n{number}: {line}.")
+                    raise warn(f"The key is missing from the string.\n{number}: {line}.", MissingSeparatorError)
 
                 current_line += "\n" + line
 
         if current_line is not None:
             result.append((current_line, "line " + str(current_number)))
 
-        return function(result)
+        return function(result, root_type)
     return wrapper
 
 def checking(tokens: list[Token]) -> None:
@@ -102,7 +122,7 @@ def checking(tokens: list[Token]) -> None:
 
 
 @normaliser
-def text_tokeniser(text: str) -> list[Token]:
+def text_tokeniser(text: str, root_type: type[Collection]) -> list[Token]:
     """Converts logical lines into tokens."""
 
     result: list[Token] = []
@@ -112,7 +132,7 @@ def text_tokeniser(text: str) -> list[Token]:
         token = Token(path = path)
 
         if SYNTAX["separator"] in line:
-            token.parent = parents[-1] if parents else None
+            token.parent = parents[-1] if parents else root_type
             token.key, token.value = map(str.strip, line.split(SYNTAX["separator"], 1))
 
         else:
@@ -122,9 +142,9 @@ def text_tokeniser(text: str) -> list[Token]:
                     token.value = SYNTAX["types"][marker]
                     token.high = len(line) - len(line.lstrip(marker))
 
-                    while parents and parents[-1].high >= token.high:
+                    while parents and parents[-1].high <= token.high:
                         parents.pop()
-                    token.parent = parents[-1] if parents else None
+                    token.parent = parents[-1] if parents else root_type
 
                     parents.append(token)
 
@@ -139,17 +159,17 @@ def tokeniser(data: object|Collection, core_path: str = DEFAULT_NAME) -> list[To
 
     result: list[Token] = []
 
-    def _walk(data: object|Collection, parent: Token|None = None, max_depth: int = 1, depth: int = 1, path: str = "", ) -> int:
+    def _walk(data: object|Collection, parent: Token|type = type(data), max_depth: int = 1, depth: int = 1, path: str = "", ) -> int:
         if isinstance(data, dict):
             items = data.items()
             temp_path = lambda key, _: f'{path}["{key}"]'
 
         elif isinstance(data, (list, tuple)):
-            items =  enumerate(data)
-            temp_path = lambda key, _: f'{path}[{key}]'
+            items =  enumerate(data, 1)
+            temp_path = lambda key, _: f'{path}[{key - 1}]'
 
         elif isinstance(data, set):
-            items =  enumerate(data)
+            items =  enumerate(data, 1)
             temp_path = lambda _, value: f'{path}{{{value!r}}}'
 
         else:
@@ -159,10 +179,7 @@ def tokeniser(data: object|Collection, core_path: str = DEFAULT_NAME) -> list[To
         for key, value in items:
             current_path = temp_path(key, value)
 
-            if isinstance(data, set): # Проверка текста.
-                print(current_path)
-
-            token = Token(parent = parent, key = key + 1, value = value, path = current_path)
+            token = Token(parent = parent, key = key, value = value, path = current_path)
 
             if isinstance(value, Collection):
                 token.value = type(value)
@@ -204,50 +221,54 @@ def text_builder(tokens: list[Token]) -> str:
             result.append((f"{marker * token.high} {token.key} {marker * token.high}", token))
 
         else:
-            parent_index = next(item for item, (_, parent_token) in enumerate(result) if parent_token is token.parent) if token.parent else -1
+            parent_index = next(item for item, (_, parent_token) in enumerate(result) if parent_token is token.parent) if isinstance(token.parent, Token) else -1
 
             result.insert(parent_index + 1, (f"{token.key}{SYNTAX["separator"]} {token.value}", token))
 
     return "\n".join(line for line, _ in result)
 
-def collection_builder(tokens: list[Token], collection: Collection) -> Collection:
+def collection_builder(tokens: list[Token], collection: Collection|None = None) -> Collection:
     """Builds a collection from tokens."""
 
-    collections: dict[Token, tuple[Any]] = {}
+    if collection is None:
+        collection = next(token.parent() for token in tokens if not isinstance(token.parent, Token))
 
-    for token in tokens:
-        parent = collection
-        parent_path = ()
+    parents: list[Token] = [parent for parent in tokens if parent.value in COLLECTIONS]
 
-        if token.parent:
-            parent_path = collections[token.parent]
+    while parents:
+        min_high = min(parent.high for parent in parents)
 
-            for key in parent_path:
-                if isinstance(parent, set):
-                    parent = next(item for item in parent if item == key)
+        for parent in [parent for parent in parents if parent.high == min_high]:
+            children: list[Token] = [child for child in tokens if child.parent is parent]
 
-                else:
-                    parent = parent[key]
+            collection_type = parent.value
 
-        if len(parent_path) == 1:
-            key = parent_path[0]
+            if collection_type is dict:
+                parent.value = {child.key: child.value  for child in children}
 
-        if isinstance(parent, dict):
-            new_parent = {**parent, token.key: token.value}
-            coolection = {**collection, parent_path: new_parent}
+            else:
+                value = [child.value for child in children]
+                parent.value = parent.value(value)
 
-        if isinstance(parent, list):
-            new_parent = [*parent, token.value]
+            parents.remove(parent)
 
-        if isinstance(parent, tuple):
-            new_parent = (*parent, token.value)
+    result: list[Token] = [token for token in tokens if not isinstance(token.parent, Token)]
 
-        if isinstance(parent, set):
-            new_parent = {*parent, token.value}
+    if isinstance(collection, dict):
+        collection.update((token.key, token.value) for token in result)
+
+    elif isinstance(collection, list):
+        collection.extend(token.value for token in result)
+
+    elif isinstance(collection, tuple):
+        collection += tuple(token.value for token in result)
+
+    elif isinstance(collection, set):
+        collection.update(token.value for token in result)
 
     return collection
 
-def object_builder(tokens: list[Token], functions: list[Callable]|None, class_name: str) -> Object:
+def object_builder(tokens: list[Token], functions: Iterable[Callable]|Callable|None, class_name: str) -> Object:
     """Builds an Object from tokens."""
 
     if class_name not in class_cache.keys():
@@ -255,38 +276,41 @@ def object_builder(tokens: list[Token], functions: list[Callable]|None, class_na
     ClassObject = class_cache[class_name]
     obj = ClassObject()
 
-    stack = []
+    parents: list[Token] = [parent for parent in tokens if parent.value in COLLECTIONS]
 
-    for token in tokens:
-        if token["high"]:
-            while stack and stack[-1]["high"] <= token["high"]:
-                stack.pop()
+    while parents:
+        min_high = min(parent.high for parent in parents)
 
-        parent = stack[-1]["node"] if stack else obj
-        value = token["value"]
+        for parent in [parent for parent in parents if parent.high == min_high]:
+            children: list[Token] = [child for child in tokens if child.parent is parent]
 
-        if value is dict:
-            value = ClassObject()
+            collection_type = parent.value
 
-        elif value in (list, set):
-            value = ClassObject(value())
+            if collection_type is dict:
+                class_object = ClassObject()
+                
+                for child in children:
+                    setattr(class_object, child.key, child.value)
 
-        if parent._items is None:
-            key = token["key"].replace(" ", "_")
-            setattr(parent, key, value)
+            else:
+                value = [child.value for child in children]
+                class_object = ClassObject(collection_type(value))
 
-        elif isinstance(parent._items, list):
-            parent._items.append(value)
+            parent.value = class_object
+            parents.remove(parent)
 
-        elif isinstance(parent._items, set):
-            parent._items.add(value)
+    result: list[Token] = [token for token in tokens if not isinstance(token.parent, Token)]
+    root_type = result[0].parent
 
-        if token["high"]:
-            stack.append({"node": value,
-                          "high": token["high"]})
+    if root_type is dict:
+        for token in tokens:
+            setattr(obj, token.key, token.value)
+
+    else:
+        value = [token.value for token in result]
+        obj._items = root_type(value)
 
     if functions is not None:
-        for function in functions:
-            obj._add(function)
+        obj._add(functions)
 
     return obj

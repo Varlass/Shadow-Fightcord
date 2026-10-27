@@ -1,14 +1,15 @@
-import traceback
 from discord import Guild, Intents
 from discord.ext.commands import Bot, Context, when_mentioned_or, CommandNotFound, CheckFailure, BotMissingPermissions
 from pathlib import Path
 from importlib import import_module
 from dotenv import load_dotenv
 from os import getenv
+load_dotenv()
 
 from data.manager import default_data
 default_data.init_files()
 from utils.check import check_list
+from utils.logger import logger
 
 from cods.data_manager import DataManager
 
@@ -20,13 +21,13 @@ class MyBot(Bot):
 
     async def on_ready(self):
         for guild in self.guilds:
-            if guild.id in list(check_list["Guilds"].values()):
+            if guild.id in set(check_list["Guilds"].values()):
                 continue
             await guild.leave()
 
 
     async def on_guild_join(self, guild: Guild):
-        if guild.id in list(check_list["Guilds"].values()):
+        if guild.id in set(check_list["Guilds"].values()):
             return
         await guild.leave()
 
@@ -37,10 +38,11 @@ class MyBot(Bot):
             return
 
         if isinstance(error, BotMissingPermissions):
-            return await ctx.reply("У меня недостаточно прав для выполнения команды.", mention_author = False, delete_after = 10)
+            await ctx.reply("У меня недостаточно прав для выполнения команды.", mention_author = False, delete_after = 10)
+            return
 
         await ctx.send(f"Неизвестная ошибка.\n<@{check_list["Members"]["_varlass_"]}>")
-        traceback.print_exception(type(error), error, error.__traceback__)
+        logger(error)
 
 
     async def setup_hook(self):
@@ -58,11 +60,10 @@ class MyBot(Bot):
                 if hasattr(module, "setup"):
                     await module.setup(self)
 
-            except Exception:
-                print(traceback.format_exc())
+            except Exception as error:
+                logger(error)
 
 
-load_dotenv()
 TOKEN = getenv("TOKEN")
 
 prefix = when_mentioned_or("c!", "C!")
