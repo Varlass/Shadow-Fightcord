@@ -1,5 +1,5 @@
 from data.manager import FileManager
-from utils.utils import ntime
+from utils.time import ntime
 from utils.data_tools import text_to_collection, object_to_collection
 
 from cods.game.objects.general import Player, Helmet, Armor, Melee, Range

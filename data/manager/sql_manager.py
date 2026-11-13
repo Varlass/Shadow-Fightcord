@@ -1,69 +1,125 @@
-import sqlite3
+from sqlite3 import connect, Connection, Row
 from pathlib import Path
+from typing import Any
+from beartype import beartype
+from dataclasses import dataclass, field
+from threading import Lock
 
 from .data_manager import DIR
 
 
-class SQLiteManager: # Работа с db.
-    TYPE_MAP: dict[type, str] = {str: "TEXT",
-                                 int: "INTEGER",
-                                 float: "REAL",
-                                 bool: "INTEGER",
-                                 bytes: "BLOB"}
+__all__ = ["SQLiteManager", "Connections"]
 
-    def __init__(self):
-        self.connections = {}
 
-    def table_create(self, file_name: str, table_name: str|None = None, *, dir: Path = DIR, **schemes): # Создание таблицы в db.
-        table_name = table_name or file_name
+class SQLiteManager:
+    """
+    A wrapper class for the SQLite library.
+    """
+
+    @beartype
+    def __init__(self, file: Path|str, *, timeout: float = 5, row_factory: bool = True):
+        (file_name, connection) = self._connect(file, timeout, row_factory)
+
+        self.file_name: str = file_name
+        self.connect: Connection = connection
+
+
+    @beartype
+    def table_create(self, table_name: str|None = None, **schemes: type):
+        """
+        Create SQLite table.
+        """
+
+        if not schemes:
+            raise ValueError("At least one column is required.")
+
+        table_name: str = self._quote_identifier(table_name or self.file_name)
 
         columns = []
         for column_name, py_type in schemes.items():
-            if not isinstance(py_type, type):
-                py_type = type(py_type)
+            if py_type not in TYPE_MAP:
+                raise TypeError(f"Unsupported Python type: {py_type.__name__}.")
 
-            sql_type = self.TYPE_MAP[py_type]
-            columns.append(f"{column_name} {sql_type}")
+            sql_type = TYPE_MAP[py_type]
+            columns.append(f"{self._quote_identifier(column_name)} {sql_type}")
 
-        query = f"CREATE TABLE IF NOT EXISTS {table_name} ({", ".join(columns)})"
+        query = f"CREATE TABLE {table_name} ({', '.join(columns)})"
 
-        self.execute(file_name, query, dir = dir)
+        self.connect.execute(query)
 
-    def fetch(self, file_name: str, query: str, params: list|tuple = (), *, dir: Path = DIR): # Чтение db.
-        _, cursor = self._connect(file_name, dir = dir)
 
-        cursor.execute(query, params)
+    def execute(self, **kwargs):
+        self.connect.execute(**kwargs)
 
-        return cursor.fetchall()
+    def executemany(self, **kwargs):
+        self.connect.executemany(**kwargs)
 
-    def execute(self, file_name: str, query: str, params: list|tuple = (), *, dir: Path = DIR): # Запись в db.
-        conn, cursor = self._connect(file_name, dir = dir)
 
-        if isinstance(params, (list, tuple)) and params and isinstance(params[0], (list, tuple, dict)):
-            cursor.executemany(query, params)
+    def close(self) -> None:
+        """
+        Closes the connection to the file.
+        """
 
-        else:
-            cursor.execute(query, params)
+        self.connect.close()
+        connections.delete(self)
 
-        conn.commit()
 
-    def _connect(self, file_name: str, *, dir: Path = DIR): # Низкоуровневая функция подключения к db.
-        if file_name not in self.connections:
-            self.connections[file_name] = sqlite3.connect(dir/f"{file_name}.db")
+    @staticmethod
+    def _quote_identifier(name: str) -> str:
+        return '"' + {name.replace('"', '""')} + '"'
 
-        return self.connections[file_name], self.connections[file_name].cursor()
+    def _connect(self, file: Path|str, timeout: float, row_factory: bool) -> tuple[str, Connection]:
+        if isinstance(file, str):
+            file_name: str = file
+            file_path: Path = DIR / f"{file}.db"
 
-    def close(self, file_name: str) -> None: # Закрытие 1 db подключения.
-        conn = self.connections.pop(file_name, None)
-        if conn:
-            try:
-                conn.close()
-            except Exception:
-                pass
+        elif isinstance(file, Path):
+            file_name: str = file.stem
+            file_path: Path = file
 
-    def close_all(self) -> None: # Закрытие всех db подключений.
-        for conn in self.connections.values():
-            conn.close()
-        self.connections.clear()
+        connection = connect(file_path, timeout = timeout)
 
-sqlitemanager = SQLiteManager()
+        try:
+            connection.execute("PRAGMA foreign_keys = ON")
+
+            if row_factory == True:
+                connection.row_factory = Row
+
+        except Exception:
+            connection.close()
+            raise
+
+        connections.add(self)
+
+        return (file_name, connection)
+
+TYPE_MAP: dict[type, str] = {str: "TEXT",
+                             int: "INTEGER",
+                             float: "REAL",
+                             bool: "INTEGER",
+                             bytes: "BLOB"}
+
+
+@dataclass(slots = True, eq = False)
+class Connections:
+    managers: set[SQLiteManager] = field(default_factory = set)
+    lock: Lock = field(default_factory = Lock)
+
+    @beartype
+    def add(self, manager: SQLiteManager) -> None:
+        with self.lock:
+            self.managers.add(manager)
+
+    @beartype
+    def delete(self, manager: SQLiteManager) -> None:
+        with self.lock:
+            self.managers.discard(manager)
+
+    def close_all(self) -> None:
+        with self.lock:
+            managers = self.managers.copy()
+
+            for manager in managers:
+                manager.close()
+
+connections = Connections()

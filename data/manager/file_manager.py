@@ -5,6 +5,9 @@ from typing import Protocol, Any, TextIO
 from .data_manager import DIR
 
 
+__all__ = ["FileManager"]
+
+
 class Format(Protocol):
     @staticmethod
     def read(file: TextIO) -> str:
@@ -17,7 +20,6 @@ class Format(Protocol):
     @staticmethod
     def update(data: Any, file: Path) -> None:
         pass
-
 
 class TxtFormat:
     @staticmethod
@@ -32,7 +34,6 @@ class TxtFormat:
     def update(data: Any, file: Path) -> None:
         with open(file, mode = "a", encoding = "utf-8") as f:
             f.write(str(data))
-
 
 class JsonFormat:
     @staticmethod
@@ -52,7 +53,6 @@ class JsonFormat:
 
         with open(file, mode = "w", encoding = "utf-8") as f:
             json.dump(data, f, ensure_ascii = False, indent = 4)
-
 
 class YamlFormat:
     @staticmethod
@@ -75,10 +75,9 @@ class YamlFormat:
 
 
 class FileManager:
-    FORMATS: dict[str, type[Format]] = {".txt": TxtFormat,
-                                        ".log": TxtFormat,
-                                        ".json": JsonFormat,
-                                        ".yaml": YamlFormat}
+    """
+    A class for unified file handling.
+    """
 
     def __init__(self, file_path: Path|str):
         self.file: Path = self._get_path(file_path)
@@ -111,8 +110,14 @@ class FileManager:
     def _get_format(self, file_path: Path) -> Format:
         file_format = file_path.suffix.lower()
 
-        if file_format in self.FORMATS:
-            return self.FORMATS[file_format]()
+        if file_format in FORMATS:
+            return FORMATS[file_format]()
 
         else:
             raise ValueError(f"Unsupported file format: {file_format}")
+
+
+FORMATS: dict[str, type[Format]] = {".txt": TxtFormat,
+                                    ".log": TxtFormat,
+                                    ".json": JsonFormat,
+                                    ".yaml": YamlFormat}

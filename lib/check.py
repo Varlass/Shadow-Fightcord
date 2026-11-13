@@ -1,31 +1,32 @@
 from discord import Interaction
 from discord.ext.commands import Context, CheckFailure, check as ch
-from beartype import beartype
+from yaml import safe_load
 
-from data.manager import FileManager
-from utils.logger import logger
-from utils.unifer import UniferContext
+from data.manager import DIR
+from lib.unifer import Unifer
 
 
-check_list: dict[str, int|dict[str, str]] = FileManager("id_list.yaml").read()
+with open(DIR/"id_list.yaml", encoding = "utf-8") as file:  # Список id из white_list.yaml.
+    check_list = safe_load(file)
 
 try:
-    white_list: set[int] = {check_list[category][name] for category, names in check_list["White_List"].items() for name in names if name}
+    white_list = {check_list[category][name] for category, names in check_list["White_List"].items() for name in names if name}
 
-except KeyError as error:
-    white_list: set = set()
-    logger(error)
+except KeyError:
+    white_list = set()
 
 
-@beartype
 def check(checks: set[int]|int = set(), *, bypass: bool = True): # Декоратор проверки id.
     if isinstance(checks, int):
         checks = {checks}
 
+    if not isinstance(checks, set):
+        raise TypeError("Цель проверки должна быть множеством.")
+
     checks = checks|white_list if bypass else checks
 
-    async def wrapper(source: Context|Interaction) -> bool:
-        context = UniferContext(source)
+    async def predicate(source: Context|Interaction) -> bool:
+        context = Unifer(source)
 
         ids = {context.user.id,
                *{role.id for role in context.user.roles},
@@ -40,4 +41,4 @@ def check(checks: set[int]|int = set(), *, bypass: bool = True): # Декора�
 
         raise CheckFailure()
 
-    return ch(wrapper)
+    return ch(predicate)

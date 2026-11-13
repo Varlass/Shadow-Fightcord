@@ -1,17 +1,17 @@
 from discord import Guild, Intents
-from discord.ext.commands import Bot, Context, when_mentioned_or, CommandNotFound, CheckFailure, BotMissingPermissions
+from discord.ext.commands import Bot, Context, CommandError, CommandNotFound, CheckFailure, BotMissingPermissions, when_mentioned_or
 from pathlib import Path
 from importlib import import_module
 from dotenv import load_dotenv
 from os import getenv
 load_dotenv()
 
-from data.manager import default_data
-default_data.init_files()
-from utils.check import check_list
-from utils.logger import logger
+from data.manager import DIR, DefaultData
+DefaultData(DIR / "default_data").init_files()
+from lib.check import check_list
+from lib.logger import logger
 
-from cods.data_manager import DataManager
+from src.data_manager import DataManager
 
 
 class MyBot(Bot):
@@ -32,8 +32,9 @@ class MyBot(Bot):
         await guild.leave()
 
 
-    async def on_command_error(self, ctx: Context, error):
-        error = getattr(error, "original", error)
+    async def on_command_error(self, ctx: Context, error: CommandError):
+        error = getattr(error, "original", error) # If CommandInvokeError.
+
         if isinstance(error, (CommandNotFound, CheckFailure)):
             return
 
@@ -41,14 +42,14 @@ class MyBot(Bot):
             await ctx.reply("У меня недостаточно прав для выполнения команды.", mention_author = False, delete_after = 10)
             return
 
-        await ctx.send(f"Неизвестная ошибка.\n<@{check_list["Members"]["_varlass_"]}>")
+        await ctx.send(f"Unknown error.\n<@{check_list["Members"]["Developer"]}>")
         logger(error)
 
 
     async def setup_hook(self):
         root = Path(__file__).resolve().parent
 
-        for file in (root / "cods/commands").rglob("*.py"):
+        for file in (root / "src/cogs").rglob("*.py"):
             if file.name.startswith("_"):
                 continue
 
