@@ -3,7 +3,7 @@
 
 # Шаблон заполнения /Decisions/
 Имя файла: ADR-{number}.md
-```txt
+```
 # Decision name
 
 **Статус**  
